@@ -53,7 +53,7 @@
       opacity: 0.6;
     }
 
-    body.dimmed #visitor-counter {
+    body.dimmed #word-card {
       opacity: 0.2;
     }
 
@@ -183,6 +183,39 @@
       background-color: var(--glow);
       width: 0%;
       transition: width 0.1s linear;
+    }
+
+    /* ==================== WORD CARD (English-Hindi) ==================== */
+    /* Subtle card in top-right showing daily word with translation */
+    #word-card {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      background-color: rgba(111, 156, 143, 0.1);
+      border: 1px solid var(--sage);
+      color: var(--sage);
+      font-family: 'Work Sans', sans-serif;
+      padding: 1rem;
+      border-radius: 8px;
+      transition: opacity 0.3s ease;
+      z-index: 10;
+      max-width: 180px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    #word-english {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--glow);
+      margin-bottom: 0.5rem;
+      font-family: 'Fraunces', serif;
+    }
+
+    #word-hindi {
+      font-size: 1rem;
+      font-weight: 400;
+      color: var(--paper);
     }
 
     /* ==================== TIMER & STOPWATCH WIDGET ==================== */
@@ -354,32 +387,6 @@
       background-color: rgba(201, 163, 94, 0.3);
     }
 
-    /* ==================== VISITOR COUNTER ==================== */
-    /* Subtle counter in top-right showing live visitor count */
-    #visitor-counter {
-      position: fixed;
-      top: 1.5rem;
-      right: 1.5rem;
-      background-color: rgba(111, 156, 143, 0.15);
-      border: 1px solid var(--sage);
-      color: var(--sage);
-      font-family: 'Work Sans', sans-serif;
-      font-size: 0.75rem;
-      font-weight: 500;
-      padding: 0.5rem 0.75rem;
-      border-radius: 20px;
-      transition: opacity 0.3s ease;
-      z-index: 10;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    #visitor-counter span {
-      color: var(--glow);
-      font-weight: 600;
-      margin-left: 0.25rem;
-    }
-
     /* ==================== DIM TOGGLE BUTTON ==================== */
     /* Small dot button for toggling focus/dim mode */
     #dim-toggle {
@@ -435,11 +442,12 @@
         right: 1.5rem;
       }
 
-      /* Move visitor counter below it */
-      #visitor-counter {
+      /* Move word card below it */
+      #word-card {
         top: auto;
         bottom: 3rem;
         right: 1.5rem;
+        left: auto;
       }
     }
 
@@ -461,9 +469,10 @@
     <!-- Canvas for drifting dust-mote animation -->
     <canvas id="motes"></canvas>
 
-    <!-- Visitor counter: subtle display in top-right -->
-    <div id="visitor-counter">
-      Visitors: <span id="visitor-count">1</span>
+    <!-- Word card: English word with Hindi meaning -->
+    <div id="word-card">
+      <div id="word-english">Word</div>
+      <div id="word-hindi">अर्थ</div>
     </div>
 
     <!-- Main content: date, clock, quote -->
@@ -520,48 +529,58 @@
   </div>
 
   <script>
-    /* ==================== VISITOR COUNTER MODULE ==================== */
+    /* ==================== ENGLISH-HINDI WORD LEARNING MODULE ==================== */
     /**
-     * Tracks and displays visitor count using localStorage.
-     * Each unique browser/device increments the counter once per day.
-     * Counter resets daily at midnight.
+     * Displays a new English word with its Hindi meaning every 10 minutes.
+     * Rotates deterministically based on time block.
+     * All screens show the same word at the same time.
      */
-    function initVisitorCounter() {
-      // Get today's date for daily reset
-      const today = new Date().toDateString();
-      const lastCountDate = localStorage.getItem('library-focus-count-date');
-      
-      // If it's a new day, reset the counter
-      if (lastCountDate !== today) {
-        localStorage.setItem('library-focus-visitor-count', '0');
-        localStorage.setItem('library-focus-count-date', today);
-      }
+    const englishHindiWords = [
+      { english: "Perseverance", hindi: "दृढ़ संकल्प (Determination)" },
+      { english: "Ambition", hindi: "महत्वाकांक्षा (Desire to succeed)" },
+      { english: "Resilient", hindi: "लचीला (Able to recover)" },
+      { english: "Diligent", hindi: "परिश्रमी (Hard-working)" },
+      { english: "Eloquent", hindi: "वाग्मी (Fluent speaker)" },
+      { english: "Pragmatic", hindi: "व्यावहारिक (Practical)" },
+      { english: "Benevolent", hindi: "दयालु (Kind-hearted)" },
+      { english: "Meticulous", hindi: "सावधानी (Very careful)" },
+      { english: "Audacious", hindi: "साहसी (Bold)" },
+      { english: "Prolific", hindi: "बहुउत्पादक (Producing much)" },
+      { english: "Serene", hindi: "शांत (Calm and peaceful)" },
+      { english: "Vibrant", hindi: "प्राणवंत (Lively)" },
+      { english: "Catalyst", hindi: "उत्प्रेरक (Agent of change)" },
+      { english: "Ephemeral", hindi: "क्षणभंगुर (Short-lived)" },
+      { english: "Paradigm", hindi: "प्रतिमान (Model or pattern)" },
+      { english: "Zealous", hindi: "उत्साही (Passionate)" },
+      { english: "Lucid", hindi: "स्पष्ट (Clear and easy to understand)" },
+      { english: "Omnipotent", hindi: "सर्वशक्तिमान (All-powerful)" },
+      { english: "Sentinel", hindi: "प्रहरी (Guard or watchman)" },
+      { english: "Ubiquitous", hindi: "सर्वव्यापी (Present everywhere)" }
+    ];
 
-      // Generate or retrieve a unique session ID for this browser
-      let sessionId = localStorage.getItem('library-focus-session-id');
-      if (!sessionId) {
-        sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('library-focus-session-id', sessionId);
-      }
+    const WORD_BLOCK_MS = 10 * 60 * 1000; // 10-minute rotation window
 
-      // Get current visitor count
-      let visitorCount = parseInt(localStorage.getItem('library-focus-visitor-count')) || 0;
-      
-      // Check if this browser has been counted today
-      let countedToday = localStorage.getItem('library-focus-counted-today-' + sessionId);
-      if (!countedToday) {
-        // This is a new visitor for today
-        visitorCount++;
-        localStorage.setItem('library-focus-visitor-count', visitorCount);
-        localStorage.setItem('library-focus-counted-today-' + sessionId, 'true');
-      }
-
-      // Display visitor count
-      document.getElementById('visitor-count').textContent = visitorCount;
+    function getCurrentWordIndex() {
+      const now = Date.now();
+      return Math.floor(now / WORD_BLOCK_MS) % englishHindiWords.length;
     }
 
-    // Initialize visitor counter on page load
-    initVisitorCounter();
+    let lastWordIndex = -1;
+
+    function updateWordCard() {
+      const wordIndex = getCurrentWordIndex();
+      
+      if (wordIndex !== lastWordIndex) {
+        const word = englishHindiWords[wordIndex];
+        document.getElementById('word-english').textContent = word.english;
+        document.getElementById('word-hindi').textContent = word.hindi;
+        lastWordIndex = wordIndex;
+      }
+    }
+
+    // Initialize and update word card
+    updateWordCard();
+    setInterval(updateWordCard, 1000);
 
     /* ==================== CLOCK & DATE MODULE ==================== */
     /**
