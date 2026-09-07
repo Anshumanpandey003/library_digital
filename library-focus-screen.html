@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Library Focus Screen</title>
+  
+  <!-- Google Fonts: Fraunces for literary warmth (clock/quotes), Work Sans for clarity (labels/buttons) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz@9..144&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ==================== DESIGN TOKENS ==================== */
+    /* All colors and spacing defined once for consistency across the entire interface */
+    :root {
+      --bg-deep: #0c1220;           /* Near-black indigo background */
+      --bg-panel: #111b2c;          /* Slightly lighter, used for timer widget panel */
+      --glow: #c9a35e;              /* Warm brass/gold accent (AM/PM, progress, hovers) */
+      --sage: #6f9c8f;              /* Muted teal for timer/stopwatch numbers */
+      --paper: #f5f5f5;             /* Bright text color */
+      --paper-dim: #a8a8a8;         /* Muted text color for secondary info */
+      --rule: rgba(255, 255, 255, 0.1); /* Faint translucent line for borders */
+    }
+
+    /* ==================== GLOBAL STYLES ==================== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Work Sans', sans-serif;
+      background-color: var(--bg-deep);
+      color: var(--paper);
+      line-height: 1.5;
+      transition: opacity 0.3s ease; /* Fade effect for dim toggle */
+    }
+
+    /* Dimmed mode: reduces opacity of major elements for a quieter, screensaver-like look */
+    body.dimmed main,
+    body.dimmed #glow,
+    body.dimmed #timer-widget,
+    body.dimmed .clock-display {
+      opacity: 0.3;
+    }
+
+    body.dimmed #dim-toggle {
+      opacity: 0.6;
+    }
+
+    /* ==================== STAGE LAYOUT ==================== */
+    /* Full-screen flex container holding everything */
+    #stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ==================== AMBIENT GLOW LAYER ==================== */
+    /* Fixed radial gradient backdrop: soft brass glow at top, soft sage at bottom */
+    /* Creates a warm, literary atmosphere without being bright */
+    #glow {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(
+        circle at 50% 0%,
+        rgba(201, 163, 94, 0.15) 0%,
+        rgba(111, 156, 143, 0.1) 50%,
+        transparent 100%
+      );
+      transition: opacity 0.3s ease;
+      z-index: 0;
+    }
+
+    /* Canvas for drifting dust-mote animation, layered above glow but below content */
+    canvas#motes {
+      position: fixed;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Main content container (clock, date, quote) sits above all layers */
+    main {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+      max-width: 90vw;
+      transition: opacity 0.3s ease;
+    }
+
+    /* ==================== DATE & TIME DISPLAY ==================== */
+    #date-display {
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.875rem;
+      color: var(--paper-dim);
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* Clock display: uses Fraunces for that warm, literary serif feel */
+    .clock-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      transition: opacity 0.3s ease;
+    }
+
+    #time-display {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(3rem, 12vw, 8rem);
+      font-weight: 400;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--paper);
+    }
+
+    #ampm {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1rem, 4vw, 2rem);
+      font-weight: 400;
+      color: var(--glow);
+      margin-top: 0.5rem;
+      min-width: 2.5rem;
+    }
+
+    /* ==================== QUOTE SECTION ==================== */
+    #quote-container {
+      margin-top: 2.5rem;
+      margin-bottom: 2rem;
+    }
+
+    #quote-text {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1.25rem, 4vw, 2rem);
+      font-weight: 400;
+      color: var(--paper);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      min-height: 3em; /* Prevent layout shift when quote changes */
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+
+    #quote-text.visible {
+      opacity: 1;
+    }
+
+    /* Progress bar under quote showing how far through the current 10-minute block we are */
+    #quote-progress {
+      width: 100%;
+      max-width: 300px;
+      height: 2px;
+      background-color: var(--rule);
+      margin: 0 auto;
+      border-radius: 1px;
+      overflow: hidden;
+    }
+
+    #quote-progress-fill {
+      height: 100%;
+      background-color: var(--glow);
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+
+    /* ==================== TIMER & STOPWATCH WIDGET ==================== */
+    #timer-widget {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--rule);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 2rem;
+      max-width: 320px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      transition: opacity 0.3s ease;
+    }
+
+    /* Tab buttons to switch between Timer and Stopwatch modes */
+    .mode-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 0.75rem;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--paper-dim);
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 0.5rem 0;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      color: var(--glow);
+      border-bottom-color: var(--glow);
+    }
+
+    .tab-btn:hover {
+      color: var(--glow);
+    }
+
+    /* Display area for time (MM:SS or HH:MM:SS) */
+    #time-display-widget {
+      font-family: 'Fraunces', serif;
+      font-size: 2.5rem;
+      font-weight: 400;
+      color: var(--sage);
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.02em;
+      min-height: 3rem;
+    }
+
+    /* When timer finishes, show "Time's up" in gold */
+    #time-display-widget.done {
+      color: var(--glow);
+      font-size: 1.5rem;
+    }
+
+    /* Preset buttons for common durations (15 min, 25 min, 1 hr, 2 hr) */
+    #timer-presets {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .preset-btn {
+      background-color: rgba(201, 163, 94, 0.1);
+      border: 1px solid var(--glow);
+      color: var(--glow);
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .preset-btn:hover {
+      background-color: rgba(201, 163, 94, 0.2);
+    }
+
+    .preset-btn.active {
+      background-color: var(--glow);
+      color: var(--bg-deep);
+    }
+
+    /* Custom time input section (hours and minutes) */
+    #custom-time-inputs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .time-input {
+      flex: 1;
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--rule);
+      color: var(--paper);
+      font-family: 'Work Sans', sans-serif;
+      padding: 0.5rem;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 0.875rem;
+    }
+
+    .time-input::placeholder {
+      color: var(--paper-dim);
+    }
+
+    .time-input:focus {
+      outline: none;
+      border-color: var(--glow);
+      background-color: rgba(201, 163, 94, 0.05);
+    }
+
+    /* Control buttons: Start/Pause and Reset */
+    #timer-controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .control-btn {
+      flex: 1;
+      background-color: var(--glow);
+      color: var(--bg-deep);
+      border: none;
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .control-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .control-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Set button for custom timer duration */
+    #set-custom-btn {
+      width: 100%;
+      background-color: rgba(201, 163, 94, 0.2);
+      color: var(--glow);
+      border: 1px solid var(--glow);
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+      transition: all 0.2s ease;
+    }
+
+    #set-custom-btn:hover {
+      background-color: rgba(201, 163, 94, 0.3);
+    }
+
+    /* ==================== DIM TOGGLE BUTTON ==================== */
+    /* Small dot button for toggling focus/dim mode */
+    #dim-toggle {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      width: 12px;
+      height: 12px;
+      background-color: var(--glow);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: opacity 0.3s ease;
+      z-index: 10;
+    }
+
+    #dim-toggle:hover {
+      opacity: 0.8;
+    }
+
+    /* ==================== RESPONSIVE DESIGN ==================== */
+    /* Mobile/tablet adjustments */
+    @media (max-width: 640px) {
+      #stage {
+        justify-content: flex-start;
+        overflow-y: auto;
+        padding-top: 2rem;
+      }
+
+      main {
+        max-width: 95vw;
+      }
+
+      #time-display {
+        font-size: clamp(2rem, 10vw, 4rem);
+      }
+
+      #quote-text {
+        font-size: clamp(1rem, 3vw, 1.5rem);
+      }
+
+      /* Timer widget flows naturally below quote instead of fixed positioning */
+      #timer-widget {
+        position: static;
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+      }
+
+      /* Move dim toggle to top-right to avoid collision with widget */
+      #dim-toggle {
+        bottom: auto;
+        top: 1.5rem;
+        left: auto;
+        right: 1.5rem;
+      }
+    }
+
+    /* Respect user's motion preferences: disable animation if reduced-motion is set */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <!-- Ambient glow layer: soft brass/sage gradient backdrop -->
+    <div id="glow"></div>
+
+    <!-- Canvas for drifting dust-mote animation -->
+    <canvas id="motes"></canvas>
+
+    <!-- Main content: date, clock, quote -->
+    <main>
+      <div id="date-display"></div>
+      <div class="clock-display">
+        <div id="time-display"></div>
+        <div id="ampm"></div>
+      </div>
+      <div id="quote-container">
+        <div id="quote-text"></div>
+        <div id="quote-progress">
+          <div id="quote-progress-fill"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Timer & Stopwatch widget -->
+    <div id="timer-widget">
+      <div class="mode-tabs">
+        <button class="tab-btn active" data-mode="timer">Timer</button>
+        <button class="tab-btn" data-mode="stopwatch">Stopwatch</button>
+      </div>
+
+      <div id="time-display-widget">00:00</div>
+
+      <!-- Timer mode: presets and custom input -->
+      <div id="timer-mode">
+        <div id="timer-presets">
+          <button class="preset-btn" data-duration="900000">15 min</button>
+          <button class="preset-btn" data-duration="1500000">25 min</button>
+          <button class="preset-btn" data-duration="3600000">1 hr</button>
+          <button class="preset-btn" data-duration="7200000">2 hr</button>
+        </div>
+        <div id="custom-time-inputs">
+          <input type="number" class="time-input" id="custom-hours" placeholder="HH" min="0" max="23">
+          <input type="number" class="time-input" id="custom-minutes" placeholder="MM" min="0" max="59">
+        </div>
+        <button id="set-custom-btn">Set Custom</button>
+      </div>
+
+      <!-- Stopwatch mode: no presets, just run/pause and reset -->
+      <div id="stopwatch-mode" style="display: none;"></div>
+
+      <!-- Shared controls: Start/Pause and Reset -->
+      <div id="timer-controls">
+        <button class="control-btn" id="start-pause-btn">Start</button>
+        <button class="control-btn" id="reset-btn">Reset</button>
+      </div>
+    </div>
+
+    <!-- Small dot toggle for focus/dim mode -->
+    <button id="dim-toggle" aria-label="Toggle dim mode"></button>
+  </div>
+
+  <script>
+    /* ==================== CLOCK & DATE MODULE ==================== */
+    /**
+     * Updates the displayed time and date every second.
+     * Formats time as 12-hour with AM/PM.
+     * Formats date as: Day, DD Month YYYY
+     */
+    function updateClock() {
+      const now = new Date();
+      
+      // Format time: 12-hour with AM/PM
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12; // Convert to 12-hour format
+
+      document.getElementById('time-display').textContent = `${hours}:${minutes}:${seconds}`;
+      document.getElementById('ampm').textContent = ampm;
+
+      // Format date: Day, DD Month YYYY
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'];
+      const dayName = days[now.getDay()];
+      const date = now.getDate();
+      const month = months[now.getMonth()];
+      const year = now.getFullYear();
+
+      document.getElementById('date-display').textContent = `${dayName}, ${date} ${month} ${year}`;
+    }
+
+    // Initial clock update and then every second
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    /* ==================== ROTATING QUOTES MODULE ==================== */
+    /**
+     * Array of ~28 study/exam-prep focused quotes.
+     * Rotates deterministically based on the current 10-minute block.
+     * This means all screens in the library show the same quote at the same time,
+     * changing exactly on the :00/:10/:20… minute marks.
+     */
+    const quotes = [
+      "Focus is a superpower in a distracted world.",
+      "Every minute invested now pays dividends later.",
+      "Your future self will thank you for this effort.",
+      "Progress over perfection.",
+      "One page at a time. One chapter at a time.",
+      "You are closer than you think.",
+      "Rest is part of the work, not the opposite of it.",
+      "Momentum builds slowly, then all at once.",
+      "The hardest part is starting. You've already started.",
+      "Your concentration is your competitive advantage.",
+      "Small wins compound into mastery.",
+      "Boredom is the price of brilliance.",
+      "The quiet hours are where ideas crystallize.",
+      "You don't need to be perfect, just consistent.",
+      "Distractions fade when you're truly engaged.",
+      "Every study session rewires your brain.",
+      "This material will become second nature.",
+      "You're building something that lasts.",
+      "Flow state is just a few minutes away.",
+      "The struggle is where growth happens.",
+      "Your attention is your most valuable asset.",
+      "Mastery is a thousand small decisions.",
+      "This is exactly what you need to do right now.",
+      "You've handled harder things than this.",
+      "Clarity comes through sustained focus.",
+      "Every question you ask now saves time later.",
+      "The finish line is closer than yesterday.",
+      "Your future depends on what you do today."
+    ];
+
+    const BLOCK_MS = 10 * 60 * 1000; // 10-minute rotation window
+
+    /**
+     * Determines which quote to display based on current Unix timestamp.
+     * Divides the timestamp by 10-minute blocks and takes modulo of quote array length.
+     */
+    function currentBlockIndex() {
+      const now = Date.now();
+      return Math.floor(now / BLOCK_MS) % quotes.length;
+    }
+
+    let lastBlockIndex = -1;
+
+    /**
+     * Show a quote with fade-in animation.
+     */
+    function showQuote(quoteText) {
+      const quoteEl = document.getElementById('quote-text');
+      quoteEl.classList.remove('visible');
+      
+      setTimeout(() => {
+        quoteEl.textContent = quoteText;
+        quoteEl.classList.add('visible');
+      }, 250);
+    }
+
+    /**
+     * Updates the quote if the 10-minute block has changed,
+     * and updates the progress bar showing how far through the current block we are.
+     */
+    function tickQuote() {
+      const blockIndex = currentBlockIndex();
+      
+      // If the block index changed, show the new quote
+      if (blockIndex !== lastBlockIndex) {
+        showQuote(quotes[blockIndex]);
+        lastBlockIndex = blockIndex;
+      }
+
+      // Update progress bar: show how many seconds into the current 10-minute block
+      const now = Date.now();
+      const blockStartMs = Math.floor(now / BLOCK_MS) * BLOCK_MS;
+      const elapsedInBlockMs = now - blockStartMs;
+      const progressPercent = (elapsedInBlockMs / BLOCK_MS) * 100;
+      document.getElementById('quote-progress-fill').style.width = progressPercent + '%';
+    }
+
+    // Show initial quote and update every second
+    tickQuote();
+    setInterval(tickQuote, 1000);
+
+    /* ==================== TIMER & STOPWATCH MODULE ==================== */
+    // State variables
+    let currentMode = 'timer'; // 'timer' or 'stopwatch'
+    let timerRunning = false;
+    let timerInterval = null;
+
+    // Timer state
+    let timerDurationMs = 25 * 60 * 1000; // Default: 25 minutes
+    let timerRemainingMs = timerDurationMs;
+    let timerDone = false;
+
+    // Stopwatch state
+    let swElapsed = 0; // Total elapsed milliseconds
+    let swLastTickMs = 0; // Time of last tick for delta calculation
+
+    /**
+     * Formats milliseconds as MM:SS or HH:MM:SS (if >= 1 hour).
+     */
+    function formatHMS(ms) {
+      const totalSeconds = Math.floor(ms / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      }
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    /**
+     * Switch between Timer and Stopwatch modes.
+     * Resets the display and stops any running countdown/stopwatch.
+     */
+    function switchMode(newMode) {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      currentMode = newMode;
+      timerDone = false;
+
+      // Update UI
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === newMode);
+      });
+
+      // Show/hide mode-specific content
+      document.getElementById('timer-mode').style.display = newMode === 'timer' ? 'block' : 'none';
+      document.getElementById('stopwatch-mode').style.display = newMode === 'stopwatch' ? 'block' : 'none';
+
+      // Reset display
+      if (newMode === 'timer') {
+        timerRemainingMs = timerDurationMs;
+        document.getElementById('time-display-widget').textContent = formatHMS(timerRemainingMs);
+      } else {
+        swElapsed = 0;
+        document.getElementById('time-display-widget').textContent = '00:00';
+      }
+
+      document.getElementById('start-pause-btn').textContent = 'Start';
+      document.getElementById('time-display-widget').classList.remove('done');
+    }
+
+    /**
+     * Start or pause the timer/stopwatch.
+     */
+    function toggleTimerRunning() {
+      if (timerRunning) {
+        // Pause
+        clearInterval(timerInterval);
+        timerRunning = false;
+        document.getElementById('start-pause-btn').textContent = 'Start';
+      } else {
+        // Start
+        timerRunning = true;
+        document.getElementById('start-pause-btn').textContent = 'Pause';
+
+        if (currentMode === 'timer') {
+          timerInterval = setInterval(tickTimer, 250);
+        } else {
+          swLastTickMs = Date.now();
+          timerInterval = setInterval(tickStopwatch, 250);
+        }
+      }
+    }
+
+    /**
+     * Tick function for Timer: counts down.
+     * When it reaches 0, shows "Time's up" in gold.
+     */
+    function tickTimer() {
+      timerRemainingMs -= 250;
+      if (timerRemainingMs <= 0) {
+        timerRemainingMs = 0;
+        timerDone = true;
+        clearInterval(timerInterval);
+        timerRunning = false;
+
+        document.getElementById('time-display-widget').textContent = "Time's up";
+        document.getElementById('time-display-widget').classList.add('done');
+        document.getElementById('start-pause-btn').textContent = 'Start';
+      } else {
+        document.getElementById('time-display-widget').textContent = formatHMS(timerRemainingMs);
+      }
+    }
+
+    /**
+     * Tick function for Stopwatch: counts up.
+     */
+    function tickStopwatch() {
+      const now = Date.now();
+      const delta = now - swLastTickMs;
+      swElapsed += delta;
+      swLastTickMs = now;
+      document.getElementById('time-display-widget').textContent = formatHMS(swElapsed);
+    }
+
+    /**
+     * Reset timer/stopwatch to initial state.
+     */
+    function resetTimer() {
+      clearInterval(timerInterval);
+      timerRunning = false;
+
+      if (currentMode === 'timer') {
+        timerRemainingMs = timerDurationMs;
+        timerDone = false;
+        document.getElementById('time-display-widget').textContent = formatHMS(timerRemainingMs);
+        document.getElementById('time-display-widget').classList.remove('done');
+      } else {
+        swElapsed = 0;
+        document.getElementById('time-display-widget').textContent = '00:00';
+      }
+
+      document.getElementById('start-pause-btn').textContent = 'Start';
+    }
+
+    /**
+     * Set timer duration from a preset button (15, 25, 60, 120 minutes).
+     */
+    function setPresetDuration(ms) {
+      timerDurationMs = ms;
+      timerRemainingMs = ms;
+      timerDone = false;
+      document.getElementById('time-display-widget').textContent = formatHMS(timerRemainingMs);
+      document.getElementById('time-display-widget').classList.remove('done');
+
+      // Update active preset highlight
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.duration == ms);
+      });
+
+      // Clear start/pause state
+      clearInterval(timerInterval);
+      timerRunning = false;
+      document.getElementById('start-pause-btn').textContent = 'Start';
+    }
+
+    /**
+     * Set timer duration from custom hours/minutes input.
+     */
+    function setCustomDuration() {
+      const hours = parseInt(document.getElementById('custom-hours').value) || 0;
+      const minutes = parseInt(document.getElementById('custom-minutes').value) || 0;
+      const totalMs = (hours * 3600 + minutes * 60) * 1000;
+
+      if (totalMs > 0) {
+        setPresetDuration(totalMs);
+        // Clear custom inputs
+        document.getElementById('custom-hours').value = '';
+        document.getElementById('custom-minutes').value = '';
+
+        // Deactivate all preset highlights
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+          btn.classList.remove('active');
+        });
+      }
+    }
+
+    // Event listeners: Mode tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+    });
+
+    // Event listeners: Preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setPresetDuration(parseInt(btn.dataset.duration));
+      });
+    });
+
+    // Event listeners: Custom timer input
+    document.getElementById('set-custom-btn').addEventListener('click', setCustomDuration);
+
+    // Event listeners: Control buttons
+    document.getElementById('start-pause-btn').addEventListener('click', toggleTimerRunning);
+    document.getElementById('reset-btn').addEventListener('click', resetTimer);
+
+    // Initialize timer display
+    switchMode('timer');
+
+    /* ==================== DIM/FOCUS TOGGLE MODULE ==================== */
+    /**
+     * Toggles the .dimmed class on body.
+     * Dimmed mode reduces opacity of clock, date, glow, and widget for a quieter screensaver look.
+     */
+    document.getElementById('dim-toggle').addEventListener('click', () => {
+      document.body.classList.toggle('dimmed');
+    });
+
+    /* ==================== AMBIENT MOTES ANIMATION MODULE ==================== */
+    /**
+     * Canvas-based particle system: tiny dots that drift slowly upward with slight horizontal wobble.
+     * Respects prefers-reduced-motion user preference.
+     */
+
+    const canvas = document.getElementById('motes');
+    const ctx = canvas.getContext('2d');
+    let motes = [];
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /**
+     * Initialize motes array based on screen size.
+     * Number of motes scales with screen area for consistent visual density.
+     */
+    function initMotes() {
+      motes = [];
+      if (reduceMotion) return; // Don't create motes if motion is reduced
+
+      const numMotes = Math.floor((window.innerWidth * window.innerHeight) / 100000);
+      for (let i = 0; i < numMotes; i++) {
+        motes.push({
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+          r: Math.random() * 1.5,
+          vx: (Math.random() - 0.5) * 0.5, // Horizontal wobble
+          vy: -0.3 - Math.random() * 0.2  // Upward drift
+        });
+      }
+    }
+
+    /**
+     * Resize canvas to match window size.
+     */
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    /**
+     * Draw and update all motes.
+     * Called on requestAnimationFrame for smooth 60fps animation.
+     */
+    function drawMotes() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(201, 163, 94, 0.3)'; // Brass color, semi-transparent
+
+      motes.forEach(mote => {
+        // Update position
+        mote.x += mote.vx;
+        mote.y += mote.vy;
+
+        // Wrap around edges
+        if (mote.y < -10) mote.y = canvas.height + 10;
+        if (mote.x < -10) mote.x = canvas.width + 10;
+        if (mote.x > canvas.width + 10) mote.x = -10;
+
+        // Draw mote
+        ctx.beginPath();
+        ctx.arc(mote.x, mote.y, mote.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Continue animation loop if motes exist
+      if (motes.length > 0) {
+        requestAnimationFrame(drawMotes);
+      }
+    }
+
+    // Initialize motes and canvas
+    resizeCanvas();
+    initMotes();
+    if (motes.length > 0) {
+      drawMotes();
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initMotes();
+    });
+  </script>
+</body>
+</html>
