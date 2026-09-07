@@ -53,6 +53,10 @@
       opacity: 0.6;
     }
 
+    body.dimmed #visitor-counter {
+      opacity: 0.2;
+    }
+
     /* ==================== STAGE LAYOUT ==================== */
     /* Full-screen flex container holding everything */
     #stage {
@@ -350,6 +354,32 @@
       background-color: rgba(201, 163, 94, 0.3);
     }
 
+    /* ==================== VISITOR COUNTER ==================== */
+    /* Subtle counter in top-right showing live visitor count */
+    #visitor-counter {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      background-color: rgba(111, 156, 143, 0.15);
+      border: 1px solid var(--sage);
+      color: var(--sage);
+      font-family: 'Work Sans', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.5rem 0.75rem;
+      border-radius: 20px;
+      transition: opacity 0.3s ease;
+      z-index: 10;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    #visitor-counter span {
+      color: var(--glow);
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+
     /* ==================== DIM TOGGLE BUTTON ==================== */
     /* Small dot button for toggling focus/dim mode */
     #dim-toggle {
@@ -398,11 +428,17 @@
         margin-bottom: 2rem;
       }
 
-      /* Move dim toggle to top-right to avoid collision with widget */
+      /* Move dim toggle to bottom-right on mobile */
       #dim-toggle {
-        bottom: auto;
-        top: 1.5rem;
+        bottom: 1.5rem;
         left: auto;
+        right: 1.5rem;
+      }
+
+      /* Move visitor counter below it */
+      #visitor-counter {
+        top: auto;
+        bottom: 3rem;
         right: 1.5rem;
       }
     }
@@ -424,6 +460,11 @@
 
     <!-- Canvas for drifting dust-mote animation -->
     <canvas id="motes"></canvas>
+
+    <!-- Visitor counter: subtle display in top-right -->
+    <div id="visitor-counter">
+      Visitors: <span id="visitor-count">1</span>
+    </div>
 
     <!-- Main content: date, clock, quote -->
     <main>
@@ -479,6 +520,47 @@
   </div>
 
   <script>
+    /* ==================== VISITOR COUNTER MODULE ==================== */
+    /**
+     * Tracks and displays visitor count using localStorage.
+     * Each unique browser session increments the counter.
+     * Counter persists across page reloads.
+     */
+    function initVisitorCounter() {
+      // Generate or retrieve a unique session ID
+      let sessionId = localStorage.getItem('library-focus-session-id');
+      if (!sessionId) {
+        sessionId = 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('library-focus-session-id', sessionId);
+      }
+
+      // Get current visitor count
+      let visitorCount = parseInt(localStorage.getItem('library-focus-visitor-count')) || 0;
+      
+      // Check if this is a new visitor (first time in this session)
+      let visitedToday = localStorage.getItem('library-focus-visited-today');
+      if (!visitedToday) {
+        visitorCount++;
+        localStorage.setItem('library-focus-visitor-count', visitorCount);
+        localStorage.setItem('library-focus-visited-today', 'true');
+        
+        // Reset daily counter at midnight
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
+        const timeUntilMidnight = tomorrow.getTime() - Date.now();
+        setTimeout(() => {
+          localStorage.setItem('library-focus-visited-today', null);
+        }, timeUntilMidnight);
+      }
+
+      // Display visitor count
+      document.getElementById('visitor-count').textContent = visitorCount;
+    }
+
+    // Initialize visitor counter on page load
+    initVisitorCounter();
+
     /* ==================== CLOCK & DATE MODULE ==================== */
     /**
      * Updates the displayed time and date every second.
